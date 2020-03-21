@@ -842,6 +842,11 @@ From https://github.com/julienXX/terminal-notifier."
   :type 'file
   :group 'alert)
 
+(defcustom emacsclient-command (executable-find "emacsclient")
+  "Path to the emacsclient command."
+  :type 'string
+  :group 'alert)
+
 (defcustom alert-notifier-default-icon
   (concat data-directory
           "images/icons/hicolor/128x128/apps/emacs.png")
@@ -849,12 +854,24 @@ From https://github.com/julienXX/terminal-notifier."
   :type 'string
   :group 'alert)
 
+
+(defcustom alert-notifier-open-buffer-command
+  #'alert-notifier-default-open-buffer-command
+  "The function used to provide a shell command to run when the user clicks the notification."
+  :type 'function)
+
+(defun alert-notifier-default-open-buffer-command ()
+  "Open the current frame by default."
+  (let ((cmd "(progn (select-frame-set-input-focus (selected-frame)))"))
+    (format "\"%s -e '%s'\"" emacsclient-command cmd)))
+
 (defun alert-notifier-notify (info)
   (if alert-notifier-command
       (let ((args
-             (list "-title"   (alert-encode-string (plist-get info :title))
-                   "-appIcon" (or (plist-get info :icon) alert-notifier-default-icon)
-                   "-message" (alert-encode-string (plist-get info :message)))))
+             (list "-title"    (alert-encode-string (plist-get info :title))
+                   "-appIcon"  (or (plist-get info :icon) alert-notifier-default-icon)
+                   "-execute"  (or (plist-get info :execute) (funcall alert-notifier-open-buffer-command))
+                   "-message"  (alert-encode-string (plist-get info :message)))))
         (apply #'call-process alert-notifier-command nil nil nil args))
     (alert-message-notify info)))
 
@@ -1029,14 +1046,14 @@ This is found at https://github.com/nels-o/toaster."
 ;;;###autoload
 (cl-defun alert (message &key (severity 'normal) title icon category
                          buffer mode data style persistent never-persist
-                         id)
+                         id execute)
   "Alert the user that something has happened.
 MESSAGE is what the user will see.  You may also use keyword
 arguments to specify additional details.  Here is a full example:
 
 \(alert \"This is a message\"
        :severity \\='high          ;; The default severity is `normal'
-       :title \"Title\"           ;; An optional title
+       :title \"Title\"            ;; An optional title
        :category \\='example       ;; A symbol to identify the message
        :mode \\='text-mode         ;; Normally determined automatically
        :buffer (current-buffer) ;; This is the default
@@ -1048,7 +1065,8 @@ arguments to specify additional details.  Here is a full example:
                                 ;; the same id in styles that support it
        :style \\='fringe)          ;; Force a given style to be used;
                                 ;; this is only for debugging!
-
+       :execute \"shell_cmd\"   ;; An optional shell command to be run when
+                                ;; the user clicks the notification.
 If no :title is given, the buffer-name of :buffer is used.  If
 :buffer is nil, it is the current buffer at the point of call.
 
@@ -1091,6 +1109,7 @@ Here are some more typical examples of usage:
                            :buffer alert-buffer
                            :mode current-major-mode
                            :id id
+                           :execute execute
                            :data data))
           matched)
 
@@ -1150,6 +1169,8 @@ Here are some more typical examples of usage:
                                      (string-match (cdr condition) title)))
                                (:message
                                 (string-match (cdr condition) message))
+                               (:execute
+                                (string-match (cdr condition) execute))
                                (:predicate
                                 (funcall (cdr condition) info))
                                (:icon
